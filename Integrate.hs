@@ -1,8 +1,8 @@
 module Integrate where
 
-import Numeric.IEEE (IEEE, succIEEE, predIEEE, nan)
 import Stream
 import Vector
+import Helper
 
 ---
 
@@ -22,7 +22,7 @@ simpleIntegrator int f t0 = int (\t _ -> f t) t0 (sconst undefined)
 
 euler :: Vector y => Double -> Integrator x y
 euler h f t0 x0 y0 t1
-  | isNaN (dt + h + vtot y1) = sconst (vconst nan) t1
+  | isNaN (dt + h + vtot y1) = sconst (vconst (0/0)) t1
   | abs h >= abs dt = Stream y1 $ euler h f t1 x' y1
   | otherwise       = euler h f (t0+h') x' (y' h') t1
   where
@@ -56,7 +56,7 @@ stepRK4 h f (t0,xf,y0) = (t2,xg,y2)
 
 rk4 :: Vector y => Double -> Integrator x y
 rk4 h f t0 x0 y0 t1
-  | isNaN (dt + h + vtot y'') = sconst (vconst nan) t''
+  | isNaN (dt + h + vtot y'') = sconst (vconst (0/0)) t''
   | abs h >= abs dt = Stream y'' $ rk4 h f t'' x'' y''
   | otherwise       = rk4 h f t' x' y' t1
   where
@@ -86,40 +86,6 @@ defaultSC = StepControl
           , clipStep = defaultClipStep 10
           }
 
-epsilonAt :: IEEE a => a -> a -> a
-epsilonAt t dir | dir >= 0  = succIEEE t - t
-                | otherwise = predIEEE t - t
-
-defaultClipStep :: Double -> Double -> Double -> Double
-defaultClipStep f t h
-  | h >= 0 && eps >= h = eps
-  | h <= 0 && eps <= h = eps
-  | otherwise          = h
-  where
-    eps = f * epsilonAt t h
-
-clipperL :: Double -> (Double -> Double)
-clipperL l v | v < l     = l
-             | otherwise = v
-
-clipperU :: Double -> (Double -> Double)
-clipperU u v | v > u     = u
-             | otherwise = v
-
-clipper :: Double -> Double -> (Double -> Double)
-clipper l u | l < u     = go l u
-            | otherwise = go u l
-  where go l u v | v < l     = l
-                 | v > u     = u
-                 | otherwise = v
-
--- map nan to something
-clipper' :: Double -> Double -> Double -> (Double -> Double)
-clipper' l u = go
-  where c = clipper l u
-        go n v | isNaN v   = n
-               | otherwise = c v
-
 rknorm :: Vector y => StepControl y -> y -> y -> Double
 rknorm c y e = sqrt . vmean . vmap (^2) $ vzip (/) e sc
   where sc = atol c `vplus` (rtol c `vhprod` y)
@@ -139,7 +105,9 @@ stepDOPRI5 c f (h0,t1,xf,y1) =
     (xg, [x1,x2,x3,x4,x5,x6]) = spops' xf [t1,t2,t3,t4,t5,t6]
 
     k1 = f' t1 x1 $ y1
-    k2 = f' t2 x2 $ vperturb y1 k1 0.2
+    k2 = f' t2 x2 $ vperturb y1 k1 (1/5)
+    -- k1 = f' t1 x1 $ y' []
+    -- k2 = f' t2 x2 $ y' [1/5]
     k3 = f' t3 x3 $ y' [3/40, 9/40]
     k4 = f' t4 x4 $ y' [44/45, -56/15, 32/9]
     k5 = f' t5 x5 $ y' [19372/6561, -25360/2187, 64448/6561, -212/729]
@@ -147,8 +115,7 @@ stepDOPRI5 c f (h0,t1,xf,y1) =
     k7 = f' t6 x6 $ y7
 
     y7 = y' [35/384, 0, 500/1113, 125/192, -2187/6784, 11/84]
-    dy7 = vlc' [-71/57600, 71/16695, -71/1920, 17253/339200, -22/525, 1/40]
-               [k1,k3,k4,k5,k6,k7]
+    dy7 = dy' [-71/57600, 0, 71/16695, -71/1920, 17253/339200, -22/525, 1/40]
 
     err = rknorm c (vzip max y1 y7) dy7
     fac = (0.38 / err) ** 0.2
@@ -156,7 +123,8 @@ stepDOPRI5 c f (h0,t1,xf,y1) =
     c' = c { clipFac = clipFac' c }
 
     f' t x y = vscale h $ f t x y
-    y' ws = vplus y1 $ vlc' ws [k1,k2,k3,k4,k5,k6]
+    y' = vplus y1 . dy'
+    dy' ws = vlc' ws [k1,k2,k3,k4,k5,k6,k7]
 
 initialStep :: Vector y => StepControl y -> Integrator' x y Double
 initialStep c f t0 xf y0 = min (100 * h0) h1
@@ -184,7 +152,7 @@ dopri5 c f t0 x0 y0 = dopri5h c h0 f t0 x0 y0
 
 dopri5h :: Vector y => StepControl y -> Double -> Integrator x y
 dopri5h c h f t x y t'
-  | isNaN (dt + hmin + vtot y') = sconst (vconst nan) t'
+  | isNaN (dt + hmin + vtot y') = sconst (vconst (0/0)) t'
   | abs dt < abs hmin = s
   | otherwise =
         let (h'',t'',x'',y'') = stepDOPRI5 c f (h',t,x,y)
@@ -207,8 +175,6 @@ dopri5' :: Vector y => StepControl y -> SimpleIntegrator y
 dopri5' = simpleIntegrator . dopri5
 
 --- default integrators
-
-type DD = StreamFD Double
 
 dsolve :: Vector y => Integrator x y
 dsolve = dopri5 defaultSC

@@ -1,15 +1,15 @@
 module Main where
 
-import Integrate (dsolve',clipper,clipper')
+import Integrate (dsolve')
 import Optimise (maximise)
 import Stream (sget)
+import Helper (clipper,clipper',cbrt)
 
 maxVs :: Double -> (Double,Double)
 maxVs sm = maximise rate 0 smax
   where smax   = clipper 0 (8/9) sm
-        clip   = clipper' 0 1 0
-        cbrt x = (clip x) ** (1/3)
-        rate s = (sqrt s) * (relRate s $ cbrt (1-s/sm))
+        clrt   = cbrt . clipper' 0 1 0
+        rate s = (sqrt s) * (relRate s $ clrt (1-s/sm))
 
 relRate :: Double -> Double -> Double
 relRate vs 1  = sqrt (1 - vs)
