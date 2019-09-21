@@ -18,7 +18,7 @@ extra-source-files:  CHANGELOG.md
 
 executable lims-rel
   main-is:             Main.hs
-  other-modules:       ODE, Test, Sandbox1
+  other-modules:       Integrate, Optimise, Stream, Vector
   -- other-extensions:
   build-depends:       base >=4.13 && <4.14, ieee754
   -- hs-source-dirs:

@@ -1,150 +1,8 @@
-module ODE where
-import Numeric.IEEE (IEEE, succIEEE, predIEEE)
-import Data.List (mapAccumL)
-import Data.Tuple (swap)
+module Integrate where
 
----
-
-data Stream t a = Stream a (StreamF t a)
-type StreamF t a = t -> Stream t a
-type StreamFD a = StreamF Double a
-
-spure :: (t -> a) -> StreamF t a
-spure f t = Stream (f t) (spure f)
-
-sconst :: a -> StreamF t a
-sconst = spure . const
-
-snull :: StreamF t ()
-snull = sconst ()
-
-scomp :: StreamF b c -> StreamF a b -> StreamF a c
-scomp f g x = let Stream y g' = g x
-                  Stream z f' = f y
-              in Stream z $ f' `scomp` g'
-
-sseq :: [StreamF t a] -> StreamF t [a]
-sseq fs t = scons . fmap sseq . unzip $ map (flip spop t) fs
-
-scons :: (a, StreamF t a) -> Stream t a
-scons = uncurry Stream
-
-suncons :: Stream t a -> (a, StreamF t a)
-suncons (Stream x f) = (x, f)
-
-spop :: StreamF t a -> t -> (a, StreamF t a)
-spop = (suncons .)
-
-spop' :: StreamF t a -> t -> (StreamF t a, a)
-spop' f = swap . spop f
-
-sget :: StreamF t a -> t -> a
-sget f = fst . spop f
-
-spops :: StreamF t a -> [t] -> ([a], StreamF t a)
-spops f = swap . spops' f
-
-spops' :: StreamF t a -> [t] -> (StreamF t a, [a])
-spops' = mapAccumL spop'
-
-stake :: StreamF t a -> [t] -> [a]
-stake f = snd . spops' f
-
-stake' :: StreamF t a -> [t] -> [(t,a)]
-stake' f ts = zip ts (stake f ts)
-
----
-
-class Vector v where
-    vconst :: Double -> v
-    vmap :: (Double -> Double) -> v -> v
-    vmap f = vzip (const f) vzero
-    vzip :: (Double -> Double -> Double) -> v -> v -> v
-    vlen :: v -> Int
-    vfold :: (Double -> Double -> Double) -> Double -> v -> Double
-
-instance Vector Double where
-    vconst = id
-    vmap = id
-    vzip = id
-    vlen = const 1
-    vfold = id
-
-instance Vector u => Vector [u] where
-    vconst = repeat . vconst
-    vmap = map . vmap
-    vzip = zipWith . vzip
-    vlen = sum . map vlen
-    vfold f b = foldr f b . map (vfold f b)
-
-instance Vector () where
-    vconst _ = ()
-    vmap _ _ = ()
-    vzip _ _ _ = ()
-    vlen _ = 0
-    vfold _ b _ = b
-
-instance (Vector u, Vector v) => Vector (u, v) where
-    vconst c = (vconst c, vconst c)
-    vmap f (u,v) = (vmap f u, vmap f v)
-    vzip f (u1,v1) (u2,v2) = (vzip f u1 u2, vzip f v1 v2)
-    vlen (u,v) = vlen u + vlen v
-    vfold f b (u,v) = ff u . ff v $ b
-      where ff u = f (vfold f b u)
-
-instance (Vector u, Vector v, Vector w) => Vector (u, v, w) where
-    vconst c = (vconst c, vconst c, vconst c)
-    vmap f (u,v,w) = (vmap f u, vmap f v, vmap f w)
-    vzip f (u1,v1,w1) (u2,v2,w2) = (vzip f u1 u2, vzip f v1 v2, vzip f w1 w2)
-    vlen (u,v,w) = vlen u + vlen v + vlen w
-    vfold f b (u,v,w) = ff u . ff v . ff w $ b
-      where ff u = f (vfold f b u)
-
-instance (Vector u, Vector v, Vector w, Vector x) => Vector (u, v, w, x) where
-    vconst c = (vconst c, vconst c, vconst c, vconst c)
-    vmap f (u,v,w,x) = (vmap f u, vmap f v, vmap f w, vmap f x)
-    vzip f (u1,v1,w1,x1) (u2,v2,w2,x2) = (vzip f u1 u2, vzip f v1 v2, vzip f w1 w2, vzip f x1 x2)
-    vlen (u,v,w,x) = vlen u + vlen v + vlen w + vlen x
-    vfold f b (u,v,w,x) = ff u . ff v . ff w . ff x $ b
-      where ff u = f (vfold f b u)
-
-vzero :: Vector v => v
-vzero = vconst 0
-
-vplus :: Vector v => v -> v -> v
-vplus = vzip (+)
-
-vsub :: Vector v => v -> v -> v
-vsub = vzip (-)
-
-vhprod :: Vector v => v -> v -> v
-vhprod = vzip (*)
-
-vscale :: Vector v => Double -> v -> v
-vscale = vmap . (*)
-
-vperturb :: Vector v => v -> v -> Double -> v
-vperturb y0 dy h = vplus y0 (vscale h dy)
-
-vtot :: Vector v => v -> Double
-vtot = vfold (+) 0
-
-vmean :: Vector v => v -> Double
-vmean v = vtot v / fromIntegral (vlen v)
-
-vsum :: Vector v => [v] -> v
-vsum [] = vzero
-vsum [x] = x
-vsum (x:xs) = vplus x (vsum xs)
-
-vlc :: Vector v => [(Double,v)] -> v
-vlc = vsum . map (uncurry vscale)
-
-vlc' :: Vector v => [Double] -> [v] -> v
-vlc' [x]    (v:vs) = vscale x v
-vlc' (x:xs) [v]    = vscale x v
-vlc' (x:xs) (v:vs) = vplus (vscale x v) (vlc' xs vs)
-vlc' _      _      = vzero
+import Numeric.IEEE (IEEE, succIEEE, predIEEE, nan)
+import Stream
+import Vector
 
 ---
 
@@ -164,6 +22,7 @@ simpleIntegrator int f t0 = int (\t _ -> f t) t0 (sconst undefined)
 
 euler :: Vector y => Double -> Integrator x y
 euler h f t0 x0 y0 t1
+  | isNaN (dt + h + vtot y1) = sconst (vconst nan) t1
   | abs h >= abs dt = Stream y1 $ euler h f t1 x' y1
   | otherwise       = euler h f (t0+h') x' (y' h') t1
   where
@@ -197,6 +56,7 @@ stepRK4 h f (t0,xf,y0) = (t2,xg,y2)
 
 rk4 :: Vector y => Double -> Integrator x y
 rk4 h f t0 x0 y0 t1
+  | isNaN (dt + h + vtot y'') = sconst (vconst nan) t''
   | abs h >= abs dt = Stream y'' $ rk4 h f t'' x'' y''
   | otherwise       = rk4 h f t' x' y' t1
   where
@@ -252,6 +112,13 @@ clipper l u | l < u     = go l u
   where go l u v | v < l     = l
                  | v > u     = u
                  | otherwise = v
+
+-- map nan to something
+clipper' :: Double -> Double -> Double -> (Double -> Double)
+clipper' l u = go
+  where c = clipper l u
+        go n v | isNaN v   = n
+               | otherwise = c v
 
 rknorm :: Vector y => StepControl y -> y -> y -> Double
 rknorm c y e = sqrt . vmean . vmap (^2) $ vzip (/) e sc
@@ -317,6 +184,7 @@ dopri5 c f t0 x0 y0 = dopri5h c h0 f t0 x0 y0
 
 dopri5h :: Vector y => StepControl y -> Double -> Integrator x y
 dopri5h c h f t x y t'
+  | isNaN (dt + hmin + vtot y') = sconst (vconst nan) t'
   | abs dt < abs hmin = s
   | otherwise =
         let (h'',t'',x'',y'') = stepDOPRI5 c f (h',t,x,y)
