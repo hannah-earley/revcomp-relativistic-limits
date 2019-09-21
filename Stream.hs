@@ -2,6 +2,7 @@ module Stream where
 
 import Data.List (mapAccumL)
 import Data.Tuple (swap)
+import Helper (bottom)
 
 data Stream t a = Stream a (StreamF t a)
 type StreamF t a = t -> Stream t a
@@ -12,6 +13,9 @@ spure f t = Stream (f t) (spure f)
 
 sconst :: a -> StreamF t a
 sconst = spure . const
+
+sbot :: StreamF t a
+sbot = sconst bottom
 
 snull :: StreamF t ()
 snull = sconst ()

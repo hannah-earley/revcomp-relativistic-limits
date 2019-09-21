@@ -1,6 +1,23 @@
 module Helper where
 
 import Numeric.IEEE (IEEE, succIEEE, predIEEE, nan)
+import Data.List (intercalate)
+
+bottom :: a
+bottom = error "bottom"
+
+csv' :: Show a => String -> [a] -> String
+csv' s = intercalate s . map show
+
+csv :: Show a => [a] -> String
+csv = csv' ","
+
+tsv :: Show a => [a] -> String
+tsv = csv' "\t"
+
+data Raw = Raw { unraw :: String }
+instance Show Raw where
+    show = unraw
 
 cbrt :: Floating a => a -> a
 cbrt = (** (1/3))

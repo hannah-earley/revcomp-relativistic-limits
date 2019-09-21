@@ -16,13 +16,16 @@ type SimpleIntegrator y = SimpleIntegrand y -> Double -> y -> StreamFD y
 type StepFunction x y s = Integrand x y -> s -> s
 
 simpleIntegrator :: Integrator x y -> SimpleIntegrator y
-simpleIntegrator int f t0 = int (\t _ -> f t) t0 (sconst undefined)
+simpleIntegrator int f t0 = int (\t _ -> f t) t0 sbot
+
+inan :: Vector v => Stream t v
+inan = sconst (vconst (0/0)) bottom
 
 ---
 
 euler :: Vector y => Double -> Integrator x y
 euler h f t0 x0 y0 t1
-  | isNaN (dt + h + vtot y1) = sconst (vconst (0/0)) t1
+  | isNaN (dt + h + vtot y1) = inan
   | abs h >= abs dt = Stream y1 $ euler h f t1 x' y1
   | otherwise       = euler h f (t0+h') x' (y' h') t1
   where
@@ -56,7 +59,7 @@ stepRK4 h f (t0,xf,y0) = (t2,xg,y2)
 
 rk4 :: Vector y => Double -> Integrator x y
 rk4 h f t0 x0 y0 t1
-  | isNaN (dt + h + vtot y'') = sconst (vconst (0/0)) t''
+  | isNaN (dt + h + vtot y'') = inan
   | abs h >= abs dt = Stream y'' $ rk4 h f t'' x'' y''
   | otherwise       = rk4 h f t' x' y' t1
   where
@@ -152,7 +155,7 @@ dopri5 c f t0 x0 y0 = dopri5h c h0 f t0 x0 y0
 
 dopri5h :: Vector y => StepControl y -> Double -> Integrator x y
 dopri5h c h f t x y t'
-  | isNaN (dt + hmin + vtot y') = sconst (vconst (0/0)) t'
+  | isNaN (dt + hmin + vtot y') = inan
   | abs dt < abs hmin = s
   | otherwise =
         let (h'',t'',x'',y'') = stepDOPRI5 c f (h',t,x,y)
