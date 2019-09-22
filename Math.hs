@@ -1,7 +1,7 @@
 module Math where
 import Data.List (scanl')
 
-import Helper (converge)
+import Helper (converge,clipper')
 import Integrate (dsolve,dsolve')
 import Stream (sget,spure,scomp,stake,StreamFD)
 
@@ -28,8 +28,11 @@ expm1'= dsolve' (\t y -> y + 1) 0 0                        :: DD
 erfs' = dsolve' f 0 [1,0,1]                                :: DDD
   where sp = 2 / sget sqrt' pi'
         f t [x,y,z] = [-2*t*x,sp*x,-sp*x]
-erf' = spure (!!1) `scomp` erfs'
-erfc' = spure (!!2) `scomp` erfs'
+erf'  = spure (!!1) `scomp` erfs'                          :: DD
+erfc' = spure (!!2) `scomp` erfs'                          :: DD
+lamw' = dsolve' f 0 0                                      :: DD
+  where f z w | abs z < 0.1 = 1 / (z + exp w)
+              | otherwise   = w / (z * (1 + w))
 
 trig  = dsolve' (\t (y,z) -> (z,-y)) 0 (0,1)               :: DD2
 sin'  = spure fst `scomp` trig                             :: DD
@@ -37,6 +40,11 @@ cos'  = spure snd `scomp` trig                             :: DD
 asin' = dsolve' (\t y ->  1/sqrt(1-t^2)) 0 0               :: DD
 acos' = dsolve' (\t y -> -1/sqrt(1-t^2)) 0 (pi'/2)         :: DD
 atan' = dsolve' (\t y ->  1/    (1+t^2)) 0 0               :: DD
+sinc' = spure fst `scomp` dsolve' f 0 (1,0)                :: DD
+  where f t (y,z) = (c$ z/t^2, -t^2*y)
+        c = clipper' (-l) l 0
+        l = 1e20
+    -- note, unstable when integrating towards 0!
 
 htrig = dsolve' (\t (y,z) -> (z,y)) 0 (0,1)                :: DD2
 sinh' = spure fst `scomp` htrig                            :: DD
