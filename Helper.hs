@@ -22,6 +22,16 @@ instance Show Raw where
 cbrt :: Floating a => a -> a
 cbrt = (** (1/3))
 
+converge' :: (Num a, Ord a) => a -> a -> [a] -> a
+converge' _ _ [x] = x
+converge' rtol atol (x:x':xs)
+  | abs (x' - x) < atol = x'
+  | 2 * abs (x' - x) < rtol * (abs x' + abs x) = x'
+  | otherwise = converge' rtol atol (x':xs)
+
+converge :: (Fractional a, Ord a) => [a] -> a
+converge = converge' 1e-16 1e-16
+
 epsilonAt :: IEEE a => a -> a -> a
 epsilonAt t dir | dir >= 0  = succIEEE t - t
                 | otherwise = predIEEE t - t

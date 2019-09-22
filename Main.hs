@@ -1,9 +1,11 @@
 module Main where
+import Data.List (inits)
 
 import Integrate (dsolve')
-import Optimise (maximise)
+import Optimise (minimise,maximise)
 import Stream (sget)
 import Helper (clipper,clipper',cbrt,tsv)
+import Math
 
 maxVs1 :: Double -> (Double,Double)
 maxVs1 sm = maximise rate 0 smax
@@ -48,14 +50,23 @@ relRate vs v0 = r0
         go nu' = (-(1+u) * nu', g * nu', r')
 
 main :: IO ()
-main = mapM_ (putStrLn.go) $ (map exp $ [-25,-24.8..(-1)] ++ [-0.99,-0.98..(-0.05)]) ++ [0.957,0.9573,0.95734,0.957348,0.9573486,0.95734865,0.957348658,0.9573486580,0.95734865804,0.957348658046,0.9573486580461,0.95734865804611,0.957348658046116,0.9573486580461166] ++ (map exp [0,0.2..25])
-  where go sm = let (s1,r1) = maxVs1 sm
-                    (s2,r2) = maxVs2 sm
-                    l = sqrt sm
-                    r1' = r1 * (l**1.5)
-                    r2' = r2 * l * 1e2
-                    r3' = (l**2.5) * (relRate sm 0)
-                    rm = min r1' r2'
-                -- in tsv [l,rm]
-                -- in tsv [l,r1',r2',r3',rm]
-                in show (sm,(s1,r1),(s2,r2),r3',l,rm,r1'<r2')
+main = mapM_ (putStrLn . go) xs
+  where
+    go sm = let (s1,r1) = maxVs1 sm
+                (s2,r2) = maxVs2 sm
+                l = sqrt sm
+                r1' = r1 * (l**1.5)
+                r2' = r2 * l * 1e2
+                r3' = (l**2.5) * (relRate sm 0)
+                rm = min r1' r2'
+            -- in tsv [l,rm]
+            -- in tsv [l,r1',r2',r3',rm]
+            in show (sm,(s1,r1),(s2,r2),r3',l,rm,r1'<r2')
+
+    xs1 = map exp [-25,-24.8..(-1)]
+    xs2 = map exp [-0.99,-0.98..(-0.05)]
+    xs3 = map (read . ("0.957"++)) (inits "3486580461166")
+    xs4 = map exp [0,0.2..25]
+    xs = xs1 ++ xs2 ++ xs3 ++ xs4
+
+
