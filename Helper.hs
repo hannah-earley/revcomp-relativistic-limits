@@ -1,6 +1,6 @@
 module Helper where
 
-import Numeric.IEEE (IEEE, succIEEE, predIEEE, nan)
+import Numeric.IEEE (IEEE, succIEEE, predIEEE)
 import Data.List (intercalate)
 
 bottom :: a

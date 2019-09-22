@@ -16,7 +16,8 @@ type LD  = [Double]
 e'          = sget exp' 1                                  :: Double
 pi'         = 4 * sget atan' 1                             :: Double
 tau'        = 8 * sget atan' 1                             :: Double
-eulergamma' = eulgams' !! 2408                             :: Double
+eulergamma' = eulgams' !! magic                            :: Double
+  where magic = 2408 -- gives best approximation
 
 square'= dsolve' (\t y -> 2*t)     0 0                     :: DD
 sqrt'  = dsolve' (\t y -> 1/(2*y)) 1 1                     :: DD
@@ -61,12 +62,14 @@ gamma' :: FD
 gamma' x = convLim ode' $ limInf 0 1
   where ode' = spure snd `scomp` ode
         ode = dsolve' f 1 (0,0)
-        f t (y,z) = (1/t, -((abs y)**(x-1)))
+        f t (y,z) = (1/t, -p y)
+        p = (** (x-1)) . abs
 
 harmonic'' :: Double -> FD
 harmonic'' h0 x = convLim ode $ limSup 1 1
   where ode = dsolve' f 0 h0
-        f t y = (1 - (t**(x-1))) / (1 - t)
+        f t y = (1 - p t) / (1 - t)
+        p = (** (x-1)) . abs
 
 digamma'  = harmonic'' (-eulergamma')                      :: FD
 harmonic' = harmonic'' 0                                   :: FD

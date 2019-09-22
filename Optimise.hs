@@ -1,12 +1,15 @@
 module Optimise where
 
+type Comp b = b -> b -> Bool
+type Optimiser a b = (a -> b) -> a -> a -> (a, b)
+
 -- golden section search for optimum of convex function
 --   n      = maximum number iterations
 --   r,atol = relative & absolute tolerance
 --   (!)    = comparison function
 -- finds x such that, forall y/=x, x!y (where a<=x,y<=b)
 
-gss' :: (Floating a, Ord a) => Int -> a -> a -> (b -> b -> Bool) -> (a -> b) -> a -> a -> (a, b)
+gss' :: (Floating a, Ord a) => Int -> a -> a -> Comp b -> Optimiser a b
 gss' n rtol atol (!) f a b = go n a' (c, f c) (d, f d) b'
   where
     a' = min a b
@@ -30,11 +33,11 @@ gss' n rtol atol (!) f a b = go n a' (c, f c) (d, f d) b'
         c' = a + invphi2 * h'
         d' = c + invphi  * h'
 
-gss :: (Floating a, Ord a) => (b -> b -> Bool) -> (a -> b) -> a -> a -> (a, b)
+gss :: (Floating a, Ord a) => Comp b -> Optimiser a b
 gss = gss' 100 1e-16 1e-16
 
-maximise :: (Floating a, Ord a, Ord t) => (a -> t) -> a -> a -> (a, t)
+maximise :: (Floating a, Ord a, Ord t) => Optimiser a t
 maximise = gss (>)
 
-minimise :: (Floating a, Ord a, Ord t) => (a -> t) -> a -> a -> (a, t)
+minimise :: (Floating a, Ord a, Ord t) => Optimiser a t
 minimise = gss (<)
