@@ -40,6 +40,9 @@ spop = (suncons .)
 spop' :: StreamF t a -> t -> (StreamF t a, a)
 spop' f = swap . spop f
 
+sseek :: StreamF t a -> t -> StreamF t a
+sseek f = snd . suncons . f
+
 sget :: StreamF t a -> t -> a
 sget f = fst . spop f
 
