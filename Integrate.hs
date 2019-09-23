@@ -120,7 +120,7 @@ stepDOPRI5 c f (h0,t1,xf,y1) =
     y7 = y' [35/384, 0, 500/1113, 125/192, -2187/6784, 11/84]
     dy7 = dy' [-71/57600, 0, 71/16695, -71/1920, 17253/339200, -22/525, 1/40]
 
-    err = rknorm c (vzip max y1 y7) dy7
+    err = rknorm c (vzip (max.abs) y1 y7) dy7
     fac = (0.38 / err) ** 0.2
     h' = h * clipFac c fac
     c' = c { clipFac = clipFac' c }
