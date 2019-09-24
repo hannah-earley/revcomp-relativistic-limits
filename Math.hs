@@ -1,10 +1,12 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Math where
 import Data.List (scanl')
 import Data.Complex (Complex((:+)),realPart,imagPart)
 
 import Helper (converge,clipper')
-import Integrate (dsolve,dsolve',residue')
-import Stream (sget,spure,scomp,stake,sseek,sseq,StreamFD)
+import Integrate (dsolve,dsolve',residue',integrate')
+import Stream (sget,spure,scomp,stake,sseek,sseq,sbot,StreamFD)
 
 type DD  = StreamFD  Double
 type DD2 = StreamFD (Double,Double)
@@ -24,6 +26,12 @@ limPInfty x0 = map (\h -> x0 - 1 + exp h) [0..]            :: LD
 limNInfty x0 = map (\h -> x0 - 1 - exp h) [0..]            :: LD
 conv = converge . take 100 . takeWhile (not . isNaN)       :: FLD
 convLim ode lim = conv $ stake ode lim                     :: Double
+
+limIntegrate :: (Double -> Double) -> Double -> [Double] -> Double
+limIntegrate f a = convLim $ dsolve (const . const . f) a sbot 0
+
+lim2Integrate :: (Double -> Double) -> [Double] -> Double -> [Double] -> Double
+lim2Integrate f x0 x1 x2 = limIntegrate f x1 x2 - limIntegrate f x1 x0
 
 --- constants
 
@@ -135,24 +143,18 @@ gamma' x | 2 <= x && x <= 3 = gamma'' x
 rgamma' :: FD
 rgamma' = exp . negate . lgamma'
 
-harmonic'' :: Double -> FD
-harmonic'' h0 x = convLim ode $ limSup 1 1
-  where ode = dsolve' f 0 h0
-        f t y = (1 - gpow x t) / (1 - t)
-
-digamma'  = harmonic'' (-eulergamma')                      :: FD
-harmonic' = harmonic'' 0                                   :: FD
+harmonic' x = limIntegrate f 0 (limSup 1 1)                :: Double
+  where f t = (1 - gpow x t) / (1 - t)
+digamma'  = subtract eulergamma' . harmonic'               :: FD
 harmonics'  = scanl' (+) 0 $ map (1/) [1..]                :: LD
 harmonics2' = scanl' (+) 0 $ map go   [1..]                :: LD
   where go n = sum $ map (1/) [n*(n-1)+1..n*(n+1)]
 eulgams' = tail $ zipWith3 go [0..] harmonics' harmonics2' :: LD
   where go n hn hn2 = 2*hn - hn2 + (n-1)/(6*n^3)
 
-polygamma' m z = -(-1)^m * (int1 - int2) :: Double
-  where ode = dsolve' f 1 0
-        f t y = t^m * exp (-z*t) / (1 - exp(-t))
-        int1 = convLim ode (limPInfty 2)
-        int2 = convLim ode (limInf 0 0.5)
+polygamma'' m z = -(-1)^m * int :: Double
+  where f t = t^m * exp (-z*t) / (1 - exp(-t))
+        int = lim2Integrate f (limInf 0 0.5) 1 (limPInfty 2)
 
 --- special functions
 
@@ -167,28 +169,24 @@ bessel' a (y1,y1') = spure (!!1) `scomp` ode `scomp` x2t
         x2t = spure (negate . log)
 
 besselJn'' :: Integral a => a -> FD
-besselJn'' a x = sget ode pi' / pi'
-  where ode = dsolve' (\t y -> cos (a'*t - x*sin t)) 0 0
+besselJn'' a x = integrate' f 0 pi' / pi'
+  where f t = cos (a'*t - x*sin t)
         a' = fromIntegral a
 
 besselJ'' :: Double -> FD
-besselJ'' a x = (int1 - int2) / pi'
-  where ode1 = dsolve' (\t y -> cos (a*t - x*sin t)) 0 0
-        ode2 = dsolve' (\t y -> exp (-x*sinh t-a*t)) 0 0
-        int1 = sget ode1 pi'
-        int2 = sin (a*pi') * convLim ode2 (limPInfty 0)
+besselJ'' a x = (int1 - sin (a*pi') * int2) / pi'
+  where int1 = integrate'   (\t -> cos (a*t - x*sin t)) 0 pi'
+        int2 = limIntegrate (\t -> exp (-x*sinh t-a*t)) 0 (limPInfty 1)
 
 dbesselJn'' :: Integral a => a -> FD
-dbesselJn'' a x = sget ode pi' / pi'
-  where ode = dsolve' (\t y -> (sin t) * sin (a'*t - x*sin t)) 0 0
+dbesselJn'' a x = integrate' f 0 pi' / pi'
+  where f t = (sin t) * sin (a'*t - x*sin t)
         a' = fromIntegral a
 
 dbesselJ'' :: Double -> FD
-dbesselJ'' a x = (int1 - int2) / pi'
-  where ode1 = dsolve' (\t y -> (sin t) * sin (a*t - x*sin t)) 0 0
-        ode2 = dsolve' (\t y -> -(sinh t) * exp (-x*sinh t-a*t)) 0 0
-        int1 = sget ode1 pi'
-        int2 = sin (a*pi') * convLim ode2 (limPInfty 0)
+dbesselJ'' a x = (int1 - sin (a*pi') * int2) / pi'
+  where int1 = integrate'   (\t ->  (sin t)  * sin (a*t - x*sin t)) 0 pi'
+        int2 = limIntegrate (\t -> -(sinh t) * exp (-x*sinh t-a*t)) 0 (limPInfty 1)
 
 besselJ'  a = bessel' a  (besselJ''  a 1, dbesselJ''  a 1) :: DD
 besselJn' a = bessel' a' (besselJn'' a 1, dbesselJn'' a 1) :: DD
@@ -196,17 +194,13 @@ besselJn' a = bessel' a' (besselJn'' a 1, dbesselJn'' a 1) :: DD
 
 besselY'' :: Double -> FD
 besselY'' a x = (int1 - int2) / pi'
-  where ode1 = dsolve' (\t y -> sin (x*sin t - a*t)) 0 0
-        ode2 = dsolve' (\t y -> (exp (a*t) + (cos (a*pi)) * exp (-a*t)) * exp (-x*sinh t)) 0 0
-        int1 = sget ode1 pi'
-        int2 = convLim ode2 (limPInfty 0)
+  where int1 = integrate' (\t -> sin (x*sin t - a*t)) 0 pi'
+        int2 = limIntegrate (\t -> (exp (a*t) + (cos (a*pi)) * exp (-a*t)) * exp (-x*sinh t)) 0 (limPInfty 1)
 
 dbesselY'' :: Double -> FD
 dbesselY'' a x = (int1 - int2) / pi'
-  where ode1 = dsolve' (\t y -> (sin t) * cos (x*sin t - a*t)) 0 0
-        ode2 = dsolve' (\t y -> -(sinh t) * (exp (a*t) + (cos (a*pi)) * exp (-a*t)) * exp (-x*sinh t)) 0 0
-        int1 = sget ode1 pi'
-        int2 = convLim ode2 (limPInfty 0)
+  where int1 = integrate' (\t -> (sin t) * cos (x*sin t - a*t)) 0 pi'
+        int2 = limIntegrate (\t -> -(sinh t) * (exp (a*t) + (cos (a*pi)) * exp (-a*t)) * exp (-x*sinh t)) 0 (limPInfty 1)
 
 besselY'  a = bessel' a  (besselY''  a 1, dbesselY''  a 1) :: DD
 
@@ -218,10 +212,9 @@ fresnel'' = spure extract `scomp` dsolve' f 0 [0,1,0,0] :: DD2
   where f t [s,c,ss,cc] = [pi'*t*c,-pi'*t*s,s,c]
         extract [_,_,s,c] = (s,c)
 
-riemannZeta' s = rgamma' s * convLim ode (limPInfty 1) :: Double
-  where ode = dsolve' f 0 0
-        f 0 y = 0
-        f t y = gpow s t / (exp t - 1)
+riemannZeta' s = rgamma' s * int2 :: Double
+  where f t = gpow s t / (exp t - 1)
+        int2 = lim2Integrate f (limInf 0 0.1) 1 (limPInfty 2)
 
 ellipticF' k = dsolve' (\t y -> (1 - (k * sin t)^2)**(-0.5)) 0 0 :: DD
 ellipticE' k = dsolve' (\t y -> (1 - (k * sin t)^2)**( 0.5)) 0 0 :: DD
@@ -257,15 +250,10 @@ eiPos' = spure f `scomp` sseq [log1, ein1] :: DD
         f [l,e] = eulergamma' + l - e
 
 eiNeg' x = - e1' (-x) :: Double
-
-e1' x = convLim ode (limPInfty (1+x)) :: Double
-  where ode = dsolve' (\t y -> exp (-t) / t) x 0
-
-en' n x = convLim ode (limPInfty 2) :: Double
-  where ode = dsolve' (\t y -> exp (-x * t) / t ** n) 1 0
+e1' x = limIntegrate (\t -> exp (-t) / t) x (limPInfty (1+x)) :: Double
+en' n x = limIntegrate (\t -> exp (-x * t) / t ** n) 1 (limPInfty 2) :: Double
 
 li1' = eiPos' `scomp` spure log :: DD
-
 li0' x = - e1' (-log x) :: Double
 
 si' = dsolve' f 0 0 :: DD
