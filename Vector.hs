@@ -10,17 +10,16 @@ class Num (VField v) => Vector v where
     type VField v
 
     vconst :: VField v -> v
-    
     vzip :: (VField v -> VField v -> VField v) -> v -> v -> v
-
     vlist :: v -> [VField v]
-    vlist = vfold (:) []
-
     vmap :: (VField v -> VField v) -> v -> v
-    vmap f = vzip (const f) vzero
-
     vfold :: (VField v -> t -> t) -> t -> v -> t
+
+    vlist = vfold (:) []
+    vmap f = vzip (const f) vzero
     vfold f b = foldr f b . vlist
+
+    {-# MINIMAL vconst, vzip, (vlist | vfold) #-}
 
 class Fractional k => ContinuousScalar k where
     ccoerce :: Double -> k

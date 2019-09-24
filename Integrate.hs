@@ -1,12 +1,54 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Integrate where
+import Data.Complex (Complex((:+)))
 
 import Stream
 import Vector
 import Helper
 
----
+{---
+
+A suite of integration tools.
+
+Given a differential equation system in the appropriate form,
+    dy/dt = f(t;x(t),y(t))    y(t0) = y0
+where y can be a vector or other module-like object and x is an auxiliary
+function, the routines return a 'stream' object that can be used to
+efficiently extract values of y at various values of t:
+    stream_y = dsolve f t0 stream_x y0
+
+See Stream for guidance on how to manipulate and read streams.
+
+Three integration routines are provided,
+ - Euler,
+ - Runge-Kutta (4th order, non-adaptive),
+ - Dopri5 (5(4)th order, adaptive step size).
+dsolve defaults to Dopri5.
+
+The primed routines (e.g. dsolve') dispense with the auxiliary function x:
+    dy/dt = f(t;y(t))
+    stream_y = dsolve f t0 y0
+
+Whilst the integration routines below support complex integrands, the
+independent variable (e.g. t) is taken along the real line. Nevertheless,
+this is still general as all integrations occur along 1D paths, and so
+we have not lost any generality. If one wishes to integrate along a path
+in the complex plane (or indeed some other scalar domain), one can use
+these routines by simply parameterising the desired path u by the
+independent variable t. If the integrand is f, then the new integrand g is
+    g(x,y;t) = f(x,y;t) * du/dt
+The start and end points (and intermediate points) should be specified
+by the parameter t.
+
+It makes sense to enforce this manual parameterisation because specifying
+a path involves finding u(t) anyway, and we can't integrate to any arbitrary
+point z -- rather, we can only integrate to points along the path u, and we
+cannot easily ascertain whether there even exists a point t such that u(t) = z.
+Therefore, we let the user deal with this.
+
+---}
 
 type Integrand x y = Double -> x -> y -> y
 type Integrator' x y o = Integrand x y -> Double -> StreamFD x -> y -> o
@@ -188,3 +230,35 @@ dsolve = dopri5 defaultSC
 
 dsolve' :: CVector y => SimpleIntegrator y
 dsolve' = dopri5' defaultSC
+
+--- pure integration
+
+integrate :: CVector y => (Double -> x -> y) -> StreamFD x -> Double -> Double -> y
+integrate  f x a = sget (dsolve g a x    (vconst 0))
+  where g = (const .) . f
+
+integrate' :: CVector y => (Double -> y) -> Double -> Double -> y
+integrate' f   a = sget (dsolve g a sbot (vconst 0))
+  where g = const . const . f
+
+pathIntegral' :: CVector y => (VField y -> y) -> (VField y -> VField y) -> VField y -> Double -> Double -> y
+pathIntegral' f u' u0 a = head . sget (dsolve g a sbot [vconst 0, vconst u0])
+  where g t x [y,u] = let du = u' (ccoerce t)
+                          uu = head (vlist u)
+                      in [vscale du (f uu), vconst du]
+
+lineIntegral' :: CVector y => (VField y -> y) -> VField y -> VField y -> y
+lineIntegral' f u0 u1 = pathIntegral' f (const du) u0 0 dt
+  where dt = cabs (u1 - u0)
+        du = (u1 - u0) / (ccoerce dt)
+
+linesIntegral' :: CVector y => (VField y -> y) -> [VField y] -> y
+linesIntegral' f us = vsum $ zipWith (lineIntegral' f) us (tail us)
+
+polyIntegral' :: CVector y => (VField y -> y) -> [VField y] -> y
+polyIntegral' f us = vsum $ zipWith (lineIntegral' f) us us'
+  where us' = tail us ++ [head us]
+
+residue' :: (CVector y, VField y ~ Complex a, Num a) => (VField y -> y) -> Complex a -> a -> y
+residue' f u0 r = polyIntegral' f (map (u0+) dirs)
+  where dirs = [r:+(-r), r:+r, (-r):+r, (-r):+(-r)]

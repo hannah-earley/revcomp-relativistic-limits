@@ -1,8 +1,9 @@
 module Math where
 import Data.List (scanl')
+import Data.Complex (Complex((:+)),realPart,imagPart)
 
 import Helper (converge,clipper')
-import Integrate (dsolve,dsolve')
+import Integrate (dsolve,dsolve',residue')
 import Stream (sget,spure,scomp,stake,sseek,sseq,StreamFD)
 
 type DD  = StreamFD  Double
@@ -13,6 +14,10 @@ type FD  =  Double  -> Double
 type FLD = [Double] -> Double
 type LD  = [Double]
 
+type DC  = StreamFD (Complex Double)
+
+--- limits
+
 limInf x x0 = map (\h -> x + x0*exp h) [0,-1..]            :: LD
 limSup x x0 = map (\h -> x - x0*exp h) [0,-1..]            :: LD
 limPInfty x0 = map (\h -> x0 - 1 + exp h) [0..]            :: LD
@@ -20,14 +25,20 @@ limNInfty x0 = map (\h -> x0 - 1 - exp h) [0..]            :: LD
 conv = converge . take 100 . takeWhile (not . isNaN)       :: FLD
 convLim ode lim = conv $ stake ode lim                     :: Double
 
+--- constants
+
 e'          = sget exp' 1                                  :: Double
 pi'         = 4 * sget atan' 1                             :: Double
 tau'        = 8 * sget atan' 1                             :: Double
 eulergamma' = eulgams' !! magic                            :: Double
   where magic = 2408 -- gives best approximation
 
+--- simple
+
 square'= dsolve' (\t y -> 2*t)     0 0                     :: DD
 sqrt'  = dsolve' (\t y -> 1/(2*y)) 1 1                     :: DD
+
+--- exponential
 
 log'  = dsolve' (\t y -> 1/t) 1 0                          :: DD
 exp'  = dsolve' (\t y ->   y) 0 1                          :: DD
@@ -40,6 +51,8 @@ erfc' = spure (!!2) `scomp` erfs'                          :: DD
 lamw' = dsolve' f 0 0                                      :: DD
   where f z w | abs z < 0.1 = 1 / (z + exp w)
               | otherwise   = w / (z * (1 + w))
+
+--- trigonometric
 
 trig  = dsolve' (\t (y,z) -> (z,-y)) 0 (0,1)               :: DD2
 sin'  = spure fst `scomp` trig                             :: DD
@@ -65,6 +78,8 @@ asec'  = spure (!!1) `scomp` asec''                        :: DD
 acsc'  = spure (!!2) `scomp` asec''                        :: DD
 acot'  = dsolve' (\t y -> -1/(1+t^2)) 1 (pi'/4)            :: DD
 
+--- hyperbolic
+
 htrig = dsolve' (\t (y,z) -> (z,y)) 0 (0,1)                :: DD2
 sinh' = spure fst `scomp` htrig                            :: DD
 cosh' = spure snd `scomp` htrig                            :: DD
@@ -88,6 +103,8 @@ acoth'= dsolve' (\t y -> 1/(1-t^2)) (5/3) (sget log' 2)    :: DD
 
 gudermannian' = spure (!!2) `scomp` dsolve' f 0 [1,0,0]    :: DD
   where f t [y,z,g] = [-y*z, y*y, y]
+
+--- gamma function etc
 
 igamma' x t0 = dsolve' f t0 (y0,0)                         :: DD2
   where y0 = sget exp' (-t0)
@@ -136,6 +153,8 @@ polygamma' m z = -(-1)^m * (int1 - int2) :: Double
         f t y = t^m * exp (-z*t) / (1 - exp(-t))
         int1 = convLim ode (limPInfty 2)
         int2 = convLim ode (limInf 0 0.5)
+
+--- special functions
 
 airy'' inits = spure fst `scomp` dsolve' (\t (y,z) -> (z,t*y)) 0 inits :: DD
 airyAi' = airy'' (3**(-2/3) / gamma' (2/3), -3**(-1/3) / gamma' (1/3)) :: DD
@@ -278,3 +297,13 @@ dawsonp' = spure product `scomp` sseq [pre, ode] :: DD
 dawsonn' = spure product `scomp` sseq [pre, ode] :: DD
   where ode = dsolve' (\t y -> exp (-t^2)) 0 0
         pre = spure (\t -> exp (t^2))
+
+--- complex
+
+-- complex test: integrate y' = iy => y = cos t + i sin t
+trig' = dsolve' (\t y -> (0:+1) * y) 0 1                   :: DC
+cos'' = spure realPart `scomp` trig'                       :: DD
+sin'' = spure imagPart `scomp` trig'                       :: DD
+
+tau'' = imagPart $ residue' (1/) 0 1                       :: Double
+pi''  = tau'' / 2                                          :: Double
