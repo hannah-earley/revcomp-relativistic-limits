@@ -20,8 +20,14 @@ instance (Vector v, Random (VField v)) => Random (RVector v) where
     random g = (RVector v', g')
       where (v', g') = vthread (const random) (vconst 0) g
 
-integrateMonte :: (Vector x, Vector y, RandomGen g) => (x -> y) -> (x,x) -> (x -> Bool) -> g -> [y]
-integrateMonte = undefined
+integrateMonte :: ( Random (VField x), Fractional (VField x)
+                  , CVector x, CVector y, RandomGen g )
+                  => (x -> y) -> (x,x) -> (x -> Bool) -> g -> [y]
+integrateMonte f (lo,hi) dom g = map (cscale vol) fxs
+  where xs = map unRVector $ randomRs (RVector lo, RVector hi) g
+        vol = product . cabslist $ hi `vsub` lo
+        fxs = stake stableMean $ map f' xs
+        f' x = if dom x then f x else vconst 0
 
 -- Neumaier version of Kahan algorithm
 stableSum :: CVector x => StreamF x x
@@ -42,3 +48,8 @@ stableMean = go (0 :: Integer, stableSum)
                          n' = n + 1
                          m = vmap (/ fromIntegral n') t
                      in Stream m (go (n',s'))
+
+montePi :: RandomGen g => g -> [Double]
+montePi = integrateMonte (const 1) lims dom
+  where lims  = ([-1,-1], [1,1] :: [Double])
+        dom x = cnorm' 2 x <= 1
