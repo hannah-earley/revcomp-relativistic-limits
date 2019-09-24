@@ -22,11 +22,14 @@ class Num (VField v) => Vector v where
     vfold :: (VField v -> t -> t) -> t -> v -> t
     vfold f b = foldr f b . vlist
 
-class ContinuousScalar k where
+class Fractional k => ContinuousScalar k where
     ccoerce :: Double -> k
     cabs    :: k -> Double
 
 type CVector v = (Vector v, ContinuousScalar (VField v))
+
+cabslist :: CVector v => v -> [Double]
+cabslist = map cabs . vlist
 
 vlen :: (Vector v, Num a) => v -> a
 vlen = vfold (const (+1)) 0
@@ -69,6 +72,18 @@ cnorm'' p = vfold ((+) . (**p) . cabs) 0 where
 
 cnorm :: CVector v => Double -> v -> Double
 cnorm p = (**(1/p)) . cnorm'' p
+
+cnorm1 :: CVector v => v -> Double
+cnorm1 = vfold ((+) . cabs) 0
+
+cnormInf :: CVector v => v -> Double
+cnormInf = maximum . cabslist
+
+cmean :: CVector v => Double -> v -> Double
+cmean p v = (cnorm'' p v / fromIntegral (vlen v)) ** (1/p)
+
+cmean2 :: CVector v => v -> Double
+cmean2 v = sqrt (cnorm' 2 v / fromIntegral (vlen v))
 
 -- wnorm' :: (Integral p, CVector v) => p -> [Double] -> v -> Double
 -- wnorm' p w = sum . zipWith go w . vlist
