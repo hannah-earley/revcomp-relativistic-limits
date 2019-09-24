@@ -68,6 +68,3 @@ montePi :: RandomGen g => g -> StreamFI Double
 montePi = integrateMonte (const 1) lims dom
   where lims  = ([-1,-1], [1,1] :: [Double])
         dom x = cnorm' 2 x <= 1
-
-montePiTest :: StreamFI Double
-montePiTest = montePi (mkStdGen 0)
