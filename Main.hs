@@ -2,8 +2,9 @@ module Main where
 import Data.List (inits)
 
 import Integrate (dsolve')
+import IntegrateMulti (montePiTest)
 import Optimise (minimise,maximise)
-import Stream (sget)
+import Stream (sget,stake)
 import Helper (clipper,clipper',cbrt,tsv)
 import Math
 
@@ -50,7 +51,8 @@ relRate vs v0 = r0
         go nu' = (-(1+u) * nu', g * nu', r')
 
 main :: IO ()
-main = mapM_ (putStrLn . go) xs
+main = mapM_ print . stake montePiTest $ map (10^) [0..]
+main' = mapM_ (putStrLn . go) xs
   where
     go sm = let (s1,r1) = maxVs1 sm
                 (s2,r2) = maxVs2 sm
