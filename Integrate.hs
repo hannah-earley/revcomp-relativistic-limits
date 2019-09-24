@@ -1,9 +1,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Integrate2 where
+module Integrate where
 
 import Stream
-import Vector2
+import Vector
 import Helper
 
 ---
