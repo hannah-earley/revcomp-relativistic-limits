@@ -29,6 +29,9 @@ class Num (VField v) => Vector v where
 
     {-# MINIMAL vconst, vthreads #-}
 
+vseq :: Vector v => v -> x -> x
+vseq v x = vfold seq x v
+
 class Fractional k => ContinuousScalar k where
     ccoerce :: Double -> k
     cabs    :: k -> Double

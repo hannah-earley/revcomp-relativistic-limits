@@ -53,7 +53,7 @@ relRate vs v0 = r0
 
 main :: IO ()
 main = do pi <- montePi <$> getStdGen
-          mapM_ print . stake pi $ map (10^) [0..]
+          mapM_ print . stake pi $ map (2^) [0..]
 main' = mapM_ (putStrLn . go) xs
   where
     go sm = let (s1,r1) = maxVs1 sm

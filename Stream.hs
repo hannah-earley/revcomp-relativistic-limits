@@ -25,6 +25,14 @@ scomp f g x = let Stream y g' = g x
                   Stream z f' = f y
               in Stream z $ f' `scomp` g'
 
+smapl :: (b -> c) -> StreamF a b -> StreamF a c
+smapl f s x = let Stream y s' = s x
+              in Stream (f y) $ f `smapl` s'
+
+smapr :: StreamF b c -> (a -> b) -> StreamF a c
+smapr s f x = let Stream y s' = s (f x)
+              in Stream y $ s' `smapr` f
+
 sseq :: [StreamF t a] -> StreamF t [a]
 sseq fs t = scons . fmap sseq . unzip $ map (flip spop t) fs
 

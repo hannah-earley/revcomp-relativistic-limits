@@ -9,6 +9,7 @@ module IntegrateMulti where
 import System.Random
 import Stream
 import Vector
+import Control.DeepSeq
 
 type StreamFI a = StreamF Integer a
 
@@ -32,39 +33,53 @@ instance (Vector v, Random (VField v)) => Random (RVector v) where
     randomR (lo,hi) = vthreads go [lo,hi]
       where go [l,h] = randomR (l,h)
 
-integrateMonte :: ( Random (VField x), Fractional (VField x)
+integrateMonte :: ( NFData y, Random (VField x), Fractional (VField x)
                   , CVector x, CVector y, RandomGen g )
-                  => (x -> y) -> (x,x) -> (x -> Bool) -> g -> StreamFI y
-integrateMonte f (lo,hi) dom g = go . stableMean $ map f' xs
+                  => (x -> y) -> (x,x) -> (x -> Bool) -> g -> StreamFI (Integer,y,Double)
+integrateMonte f (lo,hi) dom g = smapl vol' . stableStats $ map f' xs
   where xs = map unRVector $ randomRs (RVector lo, RVector hi) g
         vol = product . cabslist $ hi `vsub` lo
+        vol' (n, m, v) = (n, cscale vol m, vol * v)
         f' x = if dom x then f x else vconst 0
-        go s n = let Stream m s' = s n
-                 in Stream (cscale vol m) (go s')
 
 -- Neumaier version of Kahan algorithm
-stableSum :: CVector x => [x] -> StreamFI x
-stableSum = go (vconst 0) (vconst 0)
+stableSum' :: (NFData y, CVector y) => (x -> y) -> [x] -> StreamFI y
+stableSum' f = go (vconst 0) (vconst 0)
   where
     go !s !c xs 0 = Stream (s `vplus` c) (go s c xs)
     go !s !c ~(!x:xs) !n =
-        let !s' = s `vplus` x
-            !bigger  = vzip cmax s x
-            !smaller = vzip cmin s x
+        let !y  = force $ f x
+            !s' = force $ s `vplus` y
+            !bigger  = vzip cmax s y
+            !smaller = vzip cmin s y
             !dc = (bigger `vsub` s') `vplus` smaller
-            !c' = c `vplus` dc
-        in go s' c' xs (n-1)
+            !c' = force $ c `vplus` dc
+        in go s' c' xs (force $ n-1)
     cmax !a !b = if cabs a > cabs b then a else b
     cmin !a !b = if cabs a > cabs b then b else a
 
-stableMean :: (Fractional (VField x), CVector x) => [x] -> StreamFI x
-stableMean xs = go (0 :: Integer, stableSum xs)
+stableSum :: (NFData x, CVector x) => [x] -> StreamFI x
+stableSum = stableSum' id
+
+stableMean' :: (NFData y, Fractional (VField y), CVector y) => (x -> y) -> [x] -> StreamFI (Integer, y)
+stableMean' f xs = go (0 :: Integer, stableSum' f xs)
   where go (n,s) dn = let Stream t s' = s dn
                           n' = n + dn
                           m = vmap (/ fromIntegral n') t
-                      in Stream m (go (n',s'))
+                      in Stream (n', m) (go (n',s'))
 
-montePi :: RandomGen g => g -> StreamFI Double
+stableMean :: (NFData x, Fractional (VField x), CVector x) => [x] -> StreamFI (Integer, x)
+stableMean = stableMean' id
+
+stableStats :: (NFData x, Fractional (VField x), CVector x) => [x] -> StreamFI (Integer,x,Double)
+stableStats = smapl f . stableMean' g
+  where
+    g !x = x `deepseq` (x, vmap ((^2) . abs) x)
+    f (n,(m,m2)) = let var = cnorm1 m2 - cnorm' 2 m
+                       sm2 = abs var / fromIntegral (n-1)
+                   in (n, m, sqrt sm2)
+
+montePi :: RandomGen g => g -> StreamFI (Integer,Double,Double)
 montePi = integrateMonte (const 1) lims dom
   where lims  = ([-1,-1], [1,1] :: [Double])
         dom x = cnorm' 2 x <= 1
