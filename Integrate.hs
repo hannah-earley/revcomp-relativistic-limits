@@ -190,7 +190,7 @@ initialStep c f t0 xf y0 = min (100 * h0) h1
     Stream x1 xh = xg t1
     y1' = f t1 x1 y1
 
-    d2 = rknorm c y0 (vzip (-) y1' y0') / h0
+    d2 = rknorm c y0 (vsub y1' y0') / h0
     h1 = if d1 <= 1e-15 && d2 <= 1e-15
             then max 1e-6 (h0*1e-3)
             else (0.01 / max d1 d2) ** 0.2
@@ -233,7 +233,8 @@ dsolve' = dopri5' defaultSC
 
 --- pure integration
 
-integrate :: CVector y => (Double -> x -> y) -> StreamFD x -> Double -> Double -> y
+integrate :: CVector y => (Double -> x -> y) -> StreamFD x
+                       -> Double -> Double -> y
 integrate  f x a = sget (dsolve g a x    (vconst 0))
   where g = (const .) . f
 
@@ -241,24 +242,24 @@ integrate' :: CVector y => (Double -> y) -> Double -> Double -> y
 integrate' f   a = sget (dsolve g a sbot (vconst 0))
   where g = const . const . f
 
-pathIntegral' :: CVector y => (VField y -> y) -> (VField y -> VField y) -> VField y -> Double -> Double -> y
-pathIntegral' f u' u0 a = head . sget (dsolve g a sbot [vconst 0, vconst u0])
-  where g t x [y,u] = let du = u' (ccoerce t)
-                          uu = head (vlist u)
-                      in [vscale du (f uu), vconst du]
+pathIntegral' :: CVector' y => (VField y -> y) -> (VField y -> VField y)
+                            -> VField y -> Double -> Double -> y
+pathIntegral' f u' u0 a = fst . sget (dsolve g a sbot (vconst 0, u0))
+  where g t x (y,u) = let du = u' (ccoerce t) in (vscale du (f u), du)
 
-lineIntegral' :: CVector y => (VField y -> y) -> VField y -> VField y -> y
+lineIntegral' :: CVector' y => (VField y -> y) -> VField y -> VField y -> y
 lineIntegral' f u0 u1 = pathIntegral' f (const du) u0 0 dt
   where dt = cabs (u1 - u0)
         du = (u1 - u0) / (ccoerce dt)
 
-linesIntegral' :: CVector y => (VField y -> y) -> [VField y] -> y
+linesIntegral' :: CVector' y => (VField y -> y) -> [VField y] -> y
 linesIntegral' f us = vsum $ zipWith (lineIntegral' f) us (tail us)
 
-polyIntegral' :: CVector y => (VField y -> y) -> [VField y] -> y
+polyIntegral' :: CVector' y => (VField y -> y) -> [VField y] -> y
 polyIntegral' f us = vsum $ zipWith (lineIntegral' f) us us'
   where us' = tail us ++ [head us]
 
-residue' :: (CVector y, VField y ~ Complex a, Num a) => (VField y -> y) -> Complex a -> a -> y
+residue' :: (CVector' y, VField y ~ Complex a, Num a)
+            => (VField y -> y) -> Complex a -> a -> y
 residue' f u0 r = polyIntegral' f (map (u0+) dirs)
   where dirs = [r:+(-r), r:+r, (-r):+r, (-r):+(-r)]

@@ -40,6 +40,7 @@ class Fractional k => ContinuousScalar k where
     cabs    :: k -> Double
 
 type CVector v = (Vector v, ContinuousScalar (VField v))
+type CVector' v = (CVector v, Vector (VField v), VField v ~ VField (VField v))
 
 cabslist :: CVector v => v -> [Double]
 cabslist = map cabs . vlist
