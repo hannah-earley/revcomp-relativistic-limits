@@ -3,6 +3,9 @@ module Helper where
 import Numeric.IEEE (IEEE, succIEEE, predIEEE)
 import Data.List (intercalate)
 
+first :: (a -> a') -> (a, b) -> (a', b)
+first f (x, y) = (f x, y)
+
 bottom :: a
 bottom = error "bottom"
 

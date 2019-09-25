@@ -7,10 +7,10 @@ module Vector where
 import Data.Complex (Complex((:+)),magnitude)
 import Data.List (uncons)
 import Data.Ratio (Ratio)
+import Helper (first)
 
 class Num (VField v) => Vector v where
     type VField v
-
     vconst :: VField v -> v
     vzip :: (VField v -> VField v -> VField v) -> v -> v -> v
     vzips :: ([VField v] -> VField v) -> [v] -> v
@@ -78,7 +78,7 @@ cnorm' :: (Integral p, CVector v) => p -> v -> Double
 cnorm' p = vfold ((+) . (^p) . cabs) 0
 
 cnorm'' :: CVector v => Double -> v -> Double
-cnorm'' p = vfold ((+) . (**p) . cabs) 0 where
+cnorm'' p = vfold ((+) . (**p) . cabs) 0
 
 cnorm :: CVector v => Double -> v -> Double
 cnorm p = (**(1/p)) . cnorm'' p

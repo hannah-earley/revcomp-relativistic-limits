@@ -3,7 +3,7 @@ import Data.List (inits)
 import System.Random (getStdGen)
 
 import Integrate (dsolve')
-import IntegrateMulti (montePi)
+import IntegrateMulti (montePi,monteBall)
 import Optimise (minimise,maximise)
 import Stream (sget,stake)
 import Helper (clipper,clipper',cbrt,tsv)
@@ -52,7 +52,7 @@ relRate vs v0 = r0
         go nu' = (-(1+u) * nu', g * nu', r')
 
 main :: IO ()
-main = do pi <- montePi <$> getStdGen
+main = do pi <- monteBall 12 1 <$> getStdGen
           mapM_ print . stake pi $ map (2^) [0..]
 main' = mapM_ (putStrLn . go) xs
   where
