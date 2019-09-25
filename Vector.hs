@@ -5,9 +5,8 @@
 
 module Vector where
 import Data.Complex (Complex((:+)),magnitude)
-import Data.List (uncons)
 import Data.Ratio (Ratio)
-import Helper (first)
+import Helper
 
 class Num (VField v) => Vector v where
     type VField v
@@ -16,18 +15,22 @@ class Num (VField v) => Vector v where
     vzips :: ([VField v] -> VField v) -> [v] -> v
     vlist :: v -> [VField v]
     vmap :: (VField v -> VField v) -> v -> v
+    vmaps :: ([VField v] -> [VField v]) -> [v] -> [v]
     vfold :: (VField v -> t -> t) -> t -> v -> t
     vthread :: (VField v -> t -> (VField v, t)) -> v -> t -> (v, t)
     vthreads :: ([VField v] -> t -> (VField v, t)) -> [v] -> t -> (v, t)
+    vthreadss :: ([VField v] -> t -> ([VField v], t)) -> [v] -> t -> ([v], t)
 
-    vzip f xs ys = vzips (\[x,y] -> f x y) [xs,ys]
-    vzips f xss = fst $ vthreads ((,) . f) xss undefined
+    vzip f xs ys = head $ vmaps (\[x,y] -> [f x y]) [xs,ys]
+    vzips f = head . vmaps ((:[]) . f)
     vlist = vfold (:) []
-    vmap f xs = vzips (\[x] -> f x) [xs]
+    vmap f = head . vmaps (map f) . (:[])
+    vmaps f xs = fst $ vthreadss ((,) . f) xs undefined
     vfold f b v = snd $ vthread (\x b -> (x, f x b)) v b
     vthread f xs = vthreads (\[x] b -> f x b) [xs]
+    vthreads f xs = first head . vthreadss (\ys -> first (:[]) . f ys) xs
 
-    {-# MINIMAL vconst, vthreads #-}
+    {-# MINIMAL vconst, vthreadss #-}
 
 vseq :: Vector v => v -> x -> x
 vseq v x = vfold seq x v
@@ -144,6 +147,7 @@ instance Vector Int where
     vfold  = flip
     vthread = id
     vthreads = id
+    vthreadss = id
 
 instance Vector Integer where
     type VField Integer = Integer
@@ -155,6 +159,7 @@ instance Vector Integer where
     vfold  = flip
     vthread = id
     vthreads = id
+    vthreadss = id
 
 instance Integral a => Vector (Ratio a) where
     type VField (Ratio a) = Ratio a
@@ -166,6 +171,7 @@ instance Integral a => Vector (Ratio a) where
     vfold  = flip
     vthread = id
     vthreads = id
+    vthreadss = id
 
 instance Vector Float where
     type VField Float = Float
@@ -177,6 +183,7 @@ instance Vector Float where
     vfold  = flip
     vthread = id
     vthreads = id
+    vthreadss = id
 
 instance Vector Double where
     type VField Double = Double
@@ -188,6 +195,7 @@ instance Vector Double where
     vfold  = flip
     vthread = id
     vthreads = id
+    vthreadss = id
 
 instance RealFloat a => Vector (Complex a) where
     type VField (Complex a) = Complex a
@@ -199,30 +207,32 @@ instance RealFloat a => Vector (Complex a) where
     vfold  = flip
     vthread = id
     vthreads = id
-
-transpose2 :: [[a]] -> [[a]]
-transpose2 = go . sequence . map uncons
-  where go Nothing = []
-        go (Just xs) = let (ys, yss) = unzip xs
-                       in ys : transpose2 yss
+    vthreadss = id
 
 instance Vector u => Vector [u] where
     type VField [u] = VField u
-    vconst = repeat . vconst
-    vzip   = zipWith . vzip
+    vconst  = repeat . vconst
+    vzip    = zipWith . vzip
     vzips f = map (vzips f) . transpose2
-    vlist  = concat . map vlist
-    vmap   = map . vmap
+    vlist   = concat . map vlist
+    vmap    = map . vmap
+    vmaps f = transpose2 . map (vmaps f) . transpose2
     vfold f = foldr (flip (vfold f))
 
+    vthread f []     b = ([], b)
     vthread f (x:xs) b = let (x', b')  = vthread f x b
                              (xs',b'') = vthread f xs b'
                          in (x':xs', b'')
-    vthread f [] b = ([], b)
 
     vthreads f xss = go (transpose2 xss)
       where go []       b = ([], b)
             go (ys:yss) b = let (ys', b')  = vthreads f ys b
+                                (yss',b'') = go yss b'
+                            in (ys':yss', b'')
+
+    vthreadss f xss = first transpose2 . go (transpose2 xss)
+      where go []       b = ([], b)
+            go (ys:yss) b = let (ys', b')  = vthreadss f ys b
                                 (yss',b'') = go yss b'
                             in (ys':yss', b'')
 
@@ -249,6 +259,11 @@ instance ( Vector u, Vector v
             (u',b1) = vthreads f us b0
             (v',b2) = vthreads f vs b1
         in ((u',v'),b2)
+    vthreadss f uvs b0 =
+        let (us, vs) = unzip uvs
+            (u',b1) = vthreadss f us b0
+            (v',b2) = vthreadss f vs b1
+        in (zip u' v',b2)
 
 instance ( Vector u, Vector v, Vector w
          , VField u ~ VField v, VField u ~ VField w
@@ -261,6 +276,8 @@ instance ( Vector u, Vector v, Vector w
                    in (vzips f us, vzips f vs, vzips f ws)
     vlist (u,v,w) = vlist u ++ vlist v ++ vlist w
     vmap f (u,v,w) = (vmap f u, vmap f v, vmap f w)
+    vmaps f uvws = let (us, vs, ws) = unzip3 uvws
+                   in zip3 (vmaps f us) (vmaps f vs) (vmaps f ws)
     vfold f b (u,v,w) = vfold f (vfold f (vfold f b w) v) u
     vthread f (u,v,w) b0 =
         let (u',b1) = vthread f u b0
@@ -273,15 +290,12 @@ instance ( Vector u, Vector v, Vector w
             (v',b2) = vthreads f vs b1
             (w',b3) = vthreads f ws b2
         in ((u',v',w'),b3)
-
-unzip4 :: [(a,b,c,d)] -> ([a],[b],[c],[d])
-unzip4 = foldr (\(a,b,c,d) ~(as,bs,cs,ds) -> (a:as,b:bs,c:cs,d:ds)) ([],[],[],[])
-
-unzip5 :: [(a,b,c,d,e)] -> ([a],[b],[c],[d],[e])
-unzip5 = foldr (\(a,b,c,d,e) ~(as,bs,cs,ds,es) -> (a:as,b:bs,c:cs,d:ds,e:es)) ([],[],[],[],[])
-
-unzip6 :: [(a,b,c,d,e,f)] -> ([a],[b],[c],[d],[e],[f])
-unzip6 = foldr (\(a,b,c,d,e,f) ~(as,bs,cs,ds,es,fs) -> (a:as,b:bs,c:cs,d:ds,e:es,f:fs)) ([],[],[],[],[],[])
+    vthreadss f uvws b0 =
+        let (us, vs, ws) = unzip3 uvws
+            (u',b1) = vthreadss f us b0
+            (v',b2) = vthreadss f vs b1
+            (w',b3) = vthreadss f ws b2
+        in (zip3 u' v' w',b3)
 
 instance ( Vector u, Vector v, Vector w, Vector x
          , VField u ~ VField v, VField u ~ VField w
@@ -296,6 +310,9 @@ instance ( Vector u, Vector v, Vector w, Vector x
                     in (vzips f us, vzips f vs, vzips f ws, vzips f xs)
     vlist (u,v,w,x) = vlist u ++ vlist v ++ vlist w ++ vlist x
     vmap f (u,v,w,x) = (vmap f u, vmap f v, vmap f w, vmap f x)
+    vmaps f uvwxs = let (us, vs, ws, xs) = unzip4 uvwxs
+                    in zip4 (vmaps f us) (vmaps f vs)
+                            (vmaps f ws) (vmaps f xs) 
     vfold f b (u,v,w,x) = vfold f (vfold f (vfold f (vfold f b x) w) v) u
     vthread f (u,v,w,x) b0 =
         let (u',b1) = vthread f u b0
@@ -310,6 +327,13 @@ instance ( Vector u, Vector v, Vector w, Vector x
             (w',b3) = vthreads f ws b2
             (x',b4) = vthreads f xs b3
         in ((u',v',w',x'),b4)
+    vthreadss f uvwxs b0 =
+        let (us, vs, ws, xs) = unzip4 uvwxs
+            (u',b1) = vthreadss f us b0
+            (v',b2) = vthreadss f vs b1
+            (w',b3) = vthreadss f ws b2
+            (x',b4) = vthreadss f xs b3
+        in (zip4 u' v' w' x',b4)
 
 instance ( Vector u, Vector v, Vector w, Vector x, Vector y
          , VField u ~ VField v, VField u ~ VField w
@@ -330,6 +354,10 @@ instance ( Vector u, Vector v, Vector w, Vector x, Vector y
                                 ++ vlist x ++ vlist y
     vmap f (u,v,w,x,y) = ( vmap f u, vmap f v, vmap f w
                          , vmap f x, vmap f y )
+    vmaps f uvwxys =
+        let (us, vs, ws, xs, ys) = unzip5 uvwxys
+        in zip5 (vmaps f us) (vmaps f vs) (vmaps f ws)
+                (vmaps f xs) (vmaps f ys)
     vfold f b (u,v,w,x,y) =
         vfold f (vfold f (vfold f
                 (vfold f (vfold f b y) x) w) v) u
@@ -348,6 +376,14 @@ instance ( Vector u, Vector v, Vector w, Vector x, Vector y
             (x',b4) = vthreads f xs b3
             (y',b5) = vthreads f ys b4
         in ((u',v',w',x',y'),b5)
+    vthreadss f uvwxys b0 =
+        let (us, vs, ws, xs, ys) = unzip5 uvwxys
+            (u',b1) = vthreadss f us b0
+            (v',b2) = vthreadss f vs b1
+            (w',b3) = vthreadss f ws b2
+            (x',b4) = vthreadss f xs b3
+            (y',b5) = vthreadss f ys b4
+        in (zip5 u' v' w' x' y',b5)
 
 instance ( Vector u, Vector v, Vector w, Vector x, Vector y, Vector z
          , VField u ~ VField v, VField u ~ VField w
@@ -369,6 +405,10 @@ instance ( Vector u, Vector v, Vector w, Vector x, Vector y, Vector z
                        ++ vlist x ++ vlist y ++ vlist z
     vmap f (u,v,w,x,y,z) = ( vmap f u, vmap f v, vmap f w
                            , vmap f x, vmap f y, vmap f z )
+    vmaps f uvwxyzs =
+        let (us, vs, ws, xs, ys, zs) = unzip6 uvwxyzs
+        in zip6 (vmaps f us) (vmaps f vs) (vmaps f ws)
+                (vmaps f xs) (vmaps f ys) (vmaps f zs)
     vfold f b (u,v,w,x,y,z) =
         vfold f (vfold f (vfold f (vfold f
                 (vfold f (vfold f b z) y) x) w) v) u
@@ -389,3 +429,25 @@ instance ( Vector u, Vector v, Vector w, Vector x, Vector y, Vector z
             (y',b5) = vthreads f ys b4
             (z',b6) = vthreads f zs b5
         in ((u',v',w',x',y',z'),b6)
+    vthreadss f uvwxyzs b0 =
+        let (us, vs, ws, xs, ys, zs) = unzip6 uvwxyzs
+            (u',b1) = vthreadss f us b0
+            (v',b2) = vthreadss f vs b1
+            (w',b3) = vthreadss f ws b2
+            (x',b4) = vthreadss f xs b3
+            (y',b5) = vthreadss f ys b4
+            (z',b6) = vthreadss f zs b5
+        in (zip6 u' v' w' x' y' z',b6)
+
+instance Vector v => Vector (VProxy v) where
+    type VField (VProxy v) = VField v
+    vconst = VProxy . vconst
+    vzip f x y = VProxy (vzip f (unVProxy x) (unVProxy y))
+    vzips f = VProxy . vzips f . map unVProxy
+    vlist = vlist . unVProxy
+    vmap f = VProxy . vmap f . unVProxy
+    vmaps f = map VProxy . vmaps f . map unVProxy
+    vfold f b = vfold f b . unVProxy
+    vthread f v = first VProxy . vthread f (unVProxy v)
+    vthreads f vs = first VProxy . vthreads f (map unVProxy vs)
+    vthreadss f vs = first (map VProxy) . vthreadss f (map unVProxy vs)
