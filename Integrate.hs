@@ -259,7 +259,16 @@ polyIntegral' :: CVector' y => (VField y -> y) -> [VField y] -> y
 polyIntegral' f us = vsum $ zipWith (lineIntegral' f) us us'
   where us' = tail us ++ [head us]
 
-residue' :: (CVector' y, VField y ~ Complex a, Num a)
-            => (VField y -> y) -> Complex a -> a -> y
-residue' f u0 r = polyIntegral' f (map (u0+) dirs)
+residue'square :: (CVector' y, VField y ~ Complex a, Num a)
+                  => (VField y -> y) -> Complex a -> a -> y
+residue'square f u0 r = polyIntegral' f (map (u0+) dirs)
   where dirs = [r:+(-r), r:+r, (-r):+r, (-r):+(-r)]
+
+residue'circ :: (CVector' y, VField y ~ Complex a, RealFloat a)
+                => (VField y -> y) -> Complex a -> a -> y
+residue'circ f u0 r = pathIntegral' f u' (u0+(r:+0)) 0 (2*pi)
+  where u' t = (0:+r) * exp((0:+1) * t)
+
+residue' :: (CVector' y, VField y ~ Complex a, RealFloat a)
+            => (VField y -> y) -> Complex a -> a -> y
+residue' = residue'square
