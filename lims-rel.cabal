@@ -22,7 +22,7 @@ executable lims-rel
                        Stream, Vector, Helper, Math,
                        StableSum
   -- other-extensions:
-  build-depends:       base >=4.13 && <4.14, ieee754, random, deepseq
+  build-depends:       base >=4.13 && <4.15, ieee754, random, deepseq
   -- hs-source-dirs:
   default-language:    Haskell2010
   -- enable-profiling: True

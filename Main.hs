@@ -64,15 +64,18 @@ main :: IO ()
 -- main = do pi <- monteBall 12 1 <$> getStdGen
 --           mapM_ print . stake pi $ map (2^) [0..]
 main = mapM_ (putStrLn . go) xs
-  where
+  where --
+    revCoeff = 1e2
+    irrevCoeff = 1e-3
+
     go sm = let (s1,r1) = maxVs1 sm
                 (s2,r2) = maxVs2 sm
                 (s3,r3) = maxVs3 (sqrt sm)
                 l = sqrt sm
                 r1' = r1 * (l**1.5)
-                r2' = r2 * l * 1e2
+                r2' = r2 * l * revCoeff
                 r1'' = (l**2.5) * (relRate sm 0)
-                r3' = r3 * l**2 * 1e-3
+                r3' = r3 * l**2 * irrevCoeff
                 rm = min r1' r2'
                 im = min r2' r3'
             -- in tsv [l,rm]
